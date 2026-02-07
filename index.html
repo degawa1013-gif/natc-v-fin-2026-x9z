@@ -115,17 +115,18 @@
         await fetchExternalData();
         init();
     });
-// --- 修正後の fetchData 関数 ---
-    async function fetchData() {
-        // 1. パスワードチェックを最初に行う
+
+    // ★ 外部データを読み込んで既存データと合流させる関数
+    async function fetchExternalData() {
+        // --- ここから追加 ---
         const pw = prompt("NATC会計システム：パスワードを入力してください");
-        if (pw !== "natc2323") { //
+        if (pw !== "natc2026") { 
             alert("パスワードが違います");
             document.body.innerHTML = "<h1 style='text-align:center;margin-top:100px;color:#e74c3c;'>閲覧権限がありません。</h1>";
             return;
         }
+        // --- ここまで追加 ---
 
-        // 2. パスワードが合っていればデータを取得しに行く
         try {
             const res = await fetch(GAS_URL);
             const externalData = await res.json();
@@ -144,8 +145,6 @@
             console.error("GASデータ取得失敗:", e);
         }
     }
-
-
     // --- 以降、あなたのオリジナルのロジックをベースにした関数群 ---
     let currentPage = 1;
     const itemsPerPage = 50;
