@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>部活動会計見える化ツール (自動連携版)</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        /* あなたのオリジナルのスタイルを完全に維持 */
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f4f8; color: #333; margin: 0; padding-top: 80px; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 0 20px 40px 20px; }
+        #error-display { display: none; background-color: #ffebee; color: #c62828; border: 2px solid #ef5350; padding: 20px; margin: 20px 0; border-radius: 8px; font-weight: bold; }
+        .navbar { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 1000; }
+        .navbar-logo { font-size: 20px; font-weight: bold; color: #2c3e50; display: flex; align-items: center; gap: 10px; }
+        .navbar-logo span { background: #2ecc71; color: white; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+        .navbar-menu { display: flex; gap: 20px; }
+        .navbar-menu a { text-decoration: none; color: #555; font-weight: bold; font-size: 14px; padding: 10px; transition: color 0.3s; }
+        .navbar-menu a:hover { color: #2ecc71; }
+        header { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+        .timestamp { font-size: 14px; color: #7f8c8d; font-weight: bold; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 25px; }
+        .card h2 { font-size: 18px; margin: 0 0 20px 0; border-bottom: 1px solid #eee; padding-bottom: 10px; color: #2c3e50; }
+        .section-anchor { scroll-margin-top: 80px; }
+        #sankey_basic, #monthly_chart { width: 100%; height: 400px; }
+        .summary-box { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
+        .stat { flex: 1; text-align: center; padding: 20px; background: #fff; border-radius: 8px; border-left: 5px solid #3498db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .stat h3 { margin: 0 0 10px 0; font-size: 14px; color: #7f8c8d; }
+        .stat .value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        .transaction-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .transaction-table th { text-align: left; color: #7f8c8d; font-size: 13px; font-weight: normal; padding: 10px; border-bottom: 1px solid #eee; }
+        .transaction-table td { padding: 15px 10px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; border: 1px solid #ddd; color: #666; font-size: 12px; background: #fff; }
+        .category-income { border-color: #2ecc71; color: #2ecc71; }
+        .category-expense { border-color: #e74c3c; color: #e74c3c; }
+        .amount-plus { color: #2ecc71; font-weight: bold; }
+        .amount-minus { color: #e74c3c; font-weight: bold; }
+        .pagination-container { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+        .pagination-controls { display: flex; gap: 5px; align-items: center; }
+        .page-btn { border: 1px solid #ddd; background: white; color: #333; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-size: 14px; }
+        .page-btn.active { background: #34495e; color: white; border-color: #34495e; }
+        .csv-download { font-size: 13px; color: #3498db; text-decoration: none; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="navbar-logo">NATC 活動資金見える化ツール <span>自動連携モード</span></div>
+    <div class="navbar-menu">
+        <a href="#section-sankey">収支の流れ</a>
+        <a href="#section-monthly">月ごとの推移</a>
+        <a href="#section-list">すべての出入金</a>
+    </div>
+</nav>
+
+<div class="container">
+    <div id="error-display"></div>
+    <header><div class="timestamp" id="update-date-display">読み込み中...</div></header>
+    
+    <div class="summary-box">
+        <div class="stat" style="border-left-color: #2ecc71;"><h3>収入総額</h3><div class="value">0 円</div></div>
+        <div class="stat" style="border-left-color: #e74c3c;"><h3>支出総額</h3><div class="value">0 円</div></div>
+        <div class="stat" style="border-left-color: #f1c40f;"><h3>現在の残高</h3><div class="value">0 円</div></div>
+    </div>
+
+    <div id="section-sankey" class="card section-anchor"><h2>💸 全体の流れ</h2><div id="sankey_basic"></div></div>
+    <div id="section-monthly" class="card section-anchor"><h2>📊 月ごとの推移</h2><div id="monthly_chart"></div></div>
+    <div id="section-list" class="card section-anchor">
+        <h2>📑 すべての出入金</h2>
+        <table class="transaction-table">
+            <thead><tr><th>日付</th><th>カテゴリー</th><th>項目</th><th style="text-align: right;">金額</th></tr></thead>
+            <tbody id="transaction-list-body"></tbody>
+        </table>
+        <div class="pagination-container">
+            <div style="display: flex; align-items: center;"><span id="page-info-text"></span><div id="pagination-controls" class="pagination-controls"></div></div>
+            <a class="csv-download" onclick="downloadCSV()">CSVダウンロード</a>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    // ★ 以前の固定データ（そのまま残しています）
+    let TRANSACTIONS = [
+        { date: '2026.05.24', category: '機材・部品費', item: 'ゲーミングpc購入', amount: -176680 },
+        { date: '2026.05.24', category: '機材・部品費', item: 'ノートpc購入', amount: -69800 },
+        { date: '2026.05.24', category: '機材・部品費', item: 'キーボード購入', amount: -3163 },
+        { date: '2026.06.01', category: '機材・部品費', item: 'デスクトップpc購入', amount: -120540 },
+        { date: '2026.06.01', category: '機材・部品費', item: 'pcモニター購入', amount: -22320 },
+        { date: '2026.06.01', category: '機材・部品費', item: 'ノートpc購入', amount: -89892 },
+        { date: '2026.06.13', category: '書籍・資料費', item: '本『Autoware自動運転ソフトウェア入門』購入', amount: -4570 },
+        { date: '2026.09.01', category: 'サーバー・通信費', item: 'Claudeサブスク', amount: -3135 },
+        { date: '2026.09.17', category: '大会・イベント費', item: 'AIチャレンジ予選表彰式交通費', amount: -14860 },
+        { date: '2026.09.29', category: '大会・イベント費', item: 'AIチャレンジ練習会交通費', amount: -17348 },
+        { date: '2026.09.29', category: '大会・イベント費', item: 'AIチャレンジ練習会宿泊費', amount: -11600 },
+        { date: '2026.10.01', category: 'サーバー・通信費', item: 'Claudeサブスク', amount: -6283 },
+        { date: '2026.10.25', category: '大会・イベント費', item: 'AIチャレンジ決勝交通費', amount: -9974 },
+        { date: '2026.10.25', category: '大会・イベント費', item: 'AIチャレンジ決勝宿泊費', amount: -59980 },
+        { date: '2026.11.01', category: 'サーバー・通信費', item: 'Claudeサブスク', amount: -6213 },
+        { date: '2026.11.01', category: '印刷・消耗品費', item: '名刺制作費', amount: -1049 },
+        { date: '2026.11.06', category: '機材・部品費', item: '自動運転RCカー周辺機器購入', amount: -33499 },
+        { date: '2026.11.28', category: '大会・イベント費', item: '自動車技術会 3位賞金 + 予選表彰式交通費支給', amount: 34860 },
+        { date: '2026.12.01', category: 'サーバー・通信費', item: 'Claudeサブスク', amount: -6327 },
+        { date: '2026.12.01', category: '機材・部品費', item: '自動運転RCカー周辺機器購入', amount: -61770 },
+        { date: '2026.12.01', category: '印刷・消耗品費', item: '名刺制作費', amount: -4478 },
+        { date: '2026.12.12', category: '大会・イベント費', item: 'AIチャレンジ決勝表彰式交通費', amount: -7194 },
+        { date: '2026.12.19', category: '大会・イベント費', item: '自動運転RCカー競技見学調査交通費', amount: -7398 },
+        { date: '2026.12.19', category: '大会・イベント費', item: '自動運転RCカー競技見学調査宿泊費', amount: -10980 },
+        { date: '2026.01.01', category: 'サーバー・通信費', item: 'Claudeサブスク + Geminiサブスク', amount: -17648 },
+    ];
+
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxzTgxhKC4YePaw9RwDiAUK7WO0VgX4xTHA0KsWw2IPrhjyf1M-_QPISBKe-Qxps3zq/exec";
+
+    google.charts.load('current', {'packages':['sankey', 'corechart']});
+    google.charts.setOnLoadCallback(async () => {
+        await fetchExternalData();
+        init();
+    });
+
+    // ★ 外部データを読み込んで既存データと合流させる関数
+    async function fetchExternalData() {
+        try {
+            const res = await fetch(GAS_URL);
+            const externalData = await res.json();
+            // 重複を避けるため、スプレッドシートのデータを合流
+            externalData.forEach(item => {
+                TRANSACTIONS.push({
+                    date: item.date,
+                    category: item.category,
+                    item: item.item,
+                    amount: Number(item.amount)
+                });
+            });
+            // 日付順に並び替え
+            TRANSACTIONS.sort((a, b) => new Date(b.date.replace(/\./g, '/')) - new Date(a.date.replace(/\./g, '/')));
+        } catch (e) {
+            console.error("GASデータ取得失敗:", e);
+        }
+    }
+
+    // --- 以降、あなたのオリジナルのロジックをベースにした関数群 ---
+    let currentPage = 1;
+    const itemsPerPage = 50;
+    let totalIncome = 0, totalExpense = 0, currentBalance = 0;
+    let incomeByCategory = {}, expenseByCategory = {}, monthlyData = {};
+
+    function init() {
+        calculateData();
+        updateSummaryBox();
+        drawSankey();
+        drawMonthlyChart();
+        renderTable();
+        document.getElementById('update-date-display').textContent = new Date().toLocaleString() + " 同期済み";
+    }
+
+    function calculateData() {
+        totalIncome = 0; totalExpense = 0;
+        incomeByCategory = {}; expenseByCategory = {}; monthlyData = {};
+        TRANSACTIONS.forEach(t => {
+            const amt = t.amount;
+            const monthKey = t.date.substring(0, 7).replace('.', '-');
+            if (!monthlyData[monthKey]) monthlyData[monthKey] = { income: 0, expense: 0 };
+            if (amt >= 0) {
+                totalIncome += amt;
+                incomeByCategory[t.category] = (incomeByCategory[t.category] || 0) + amt;
+                monthlyData[monthKey].income += amt;
+            } else {
+                totalExpense += Math.abs(amt);
+                expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + Math.abs(amt);
+                monthlyData[monthKey].expense += Math.abs(amt);
+            }
+        });
+        currentBalance = totalIncome - totalExpense;
+    }
+
+    function updateSummaryBox() {
+        const stats = document.querySelectorAll('.stat .value');
+        stats[0].textContent = totalIncome.toLocaleString() + ' 円';
+        stats[1].textContent = totalExpense.toLocaleString() + ' 円';
+        stats[2].textContent = currentBalance.toLocaleString() + ' 円';
+        stats[2].style.color = currentBalance < 0 ? '#e74c3c' : '#2c3e50';
+    }
+
+    function drawSankey() {
+        var data = new google.visualization.DataTable();
+        data.addColumn('string', 'From'); data.addColumn('string', 'To'); data.addColumn('number', '金額');
+        let rows = [];
+        for (let cat in incomeByCategory) rows.push([cat, '収入総額', incomeByCategory[cat]]);
+        for (let cat in expenseByCategory) rows.push(['支出総額', cat + ' ', expenseByCategory[cat]]);
+        if (totalIncome > 0) rows.push(['収入総額', '支出総額', Math.min(totalIncome, totalExpense)]);
+        data.addRows(rows);
+        new google.visualization.Sankey(document.getElementById('sankey_basic')).draw(data, { sankey: { node: { label: { fontSize: 14 } } } });
+    }
+
+    function drawMonthlyChart() {
+        const keys = Object.keys(monthlyData).sort();
+        let chartData = [['月', '収入', '支出', '収支']];
+        keys.forEach(k => chartData.push([k, monthlyData[k].income, -monthlyData[k].expense, monthlyData[k].income - monthlyData[k].expense]));
+        var data = google.visualization.arrayToDataTable(chartData);
+        new google.visualization.ComboChart(document.getElementById('monthly_chart')).draw(data, { seriesType: 'bars', series: { 2: { type: 'line' } }, colors: ['#2ecc71', '#e74c3c', '#34495e'] });
+    }
+
+    function renderTable() {
+        const body = document.getElementById('transaction-list-body');
+        body.innerHTML = '';
+        const start = (currentPage - 1) * itemsPerPage;
+        const pageData = TRANSACTIONS.slice(start, start + itemsPerPage);
+        pageData.forEach(t => {
+            const badge = t.amount >= 0 ? 'category-income' : 'category-expense';
+            body.innerHTML += `<tr><td>${t.date}</td><td><span class="badge ${badge}">${t.category}</span></td><td>${t.item}</td><td style="text-align:right" class="${t.amount >= 0 ? 'amount-plus' : 'amount-minus'}">${t.amount.toLocaleString()} 円</td></tr>`;
+        });
+        document.getElementById('page-info-text').textContent = `${TRANSACTIONS.length}件中 ${start+1}-${Math.min(start+itemsPerPage, TRANSACTIONS.length)}件を表示`;
+    }
+
+    function downloadCSV() {
+        let csv = "\uFEFF日付,カテゴリー,項目,金額\n";
+        TRANSACTIONS.forEach(t => csv += `${t.date},${t.category},${t.item},${t.amount}\n`);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = '会計明細_自動連携版.csv';
+        a.click();
+    }
+</script>
+</body>
+</html>
